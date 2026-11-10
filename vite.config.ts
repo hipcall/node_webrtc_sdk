@@ -1,0 +1,66 @@
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+
+/**
+ * OAuth token exchange proxy.
+ * Tarayıcı -> POST /hipcall-oauth/token (client_secret YOK)
+ * Dev server -> client_secret ekler -> https://use.hipcall.com.tr/oauth/token
+ */
+function hipcallOAuthProxy(env: Record<string, string>): Plugin {
+  const tokenUrl = env.VITE_HIPCALL_TOKEN_URL || 'https://use.hipcall.com.tr/oauth/token';
+  return {
+    name: 'hipcall-oauth-proxy',
+    configureServer(server) {
+      server.middlewares.use('/hipcall-oauth/token', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end('Method Not Allowed');
+        }
+        let raw = '';
+        req.on('data', (c) => (raw += c));
+        req.on('end', async () => {
+          try {
+            const params = new URLSearchParams(raw);
+            params.set('client_id', env.VITE_HIPCALL_CLIENT_ID);
+            params.set('client_secret', env.HIPCALL_CLIENT_SECRET || '');
+            const upstream = await fetch(tokenUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+              body: params.toString(),
+            });
+            const text = await upstream.text();
+            res.statusCode = upstream.status;
+            res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
+            res.end(text);
+          } catch (e) {
+            res.statusCode = 502;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'proxy_error', error_description: String(e) }));
+          }
+        });
+      });
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const apiTarget = new URL(env.VITE_HIPCALL_API_BASE_URL || 'https://use.hipcall.com.tr/api/v3');
+  return {
+    plugins: [hipcallOAuthProxy(env)],
+    server: {
+      port: 5173,
+      host: true,
+      // ngrok host'una izin ver
+      allowedHosts: [env.NGROK_HOST || 'envelope-footrest-flyable.ngrok-free.dev', '.ngrok-free.dev', '.ngrok.app'],
+      proxy: {
+        // API CORS sorunu için: /hipcall-api/* -> https://use.hipcall.com.tr/api/v3/*
+        '/hipcall-api': {
+          target: apiTarget.origin,
+          changeOrigin: true,
+          secure: true,
+          rewrite: (p) => p.replace(/^\/hipcall-api/, apiTarget.pathname.replace(/\/$/, '')),
+        },
+      },
+    },
+  };
+});

@@ -1,0 +1,50 @@
+{
+  "name": "@hipcall/webrtc-sdk",
+  "version": "1.0.0",
+  "description": "Official WebRTC & SIP JavaScript/TypeScript SDK for Hipcall Cloud PBX",
+  "license": "MIT",
+  "author": "Hipcall <dev@hipcall.com>",
+  "type": "module",
+  "main": "./dist/sdk/hipcall-webrtc-sdk.umd.js",
+  "module": "./dist/sdk/hipcall-webrtc-sdk.es.js",
+  "types": "./dist/sdk/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/sdk/types/index.d.ts",
+      "import": "./dist/sdk/hipcall-webrtc-sdk.es.js",
+      "require": "./dist/sdk/hipcall-webrtc-sdk.umd.js"
+    }
+  },
+  "files": [
+    "dist/sdk",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "hipcall",
+    "webrtc",
+    "sip",
+    "voip",
+    "webphone",
+    "cloud-pbx",
+    "telephony"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:sdk": "vite build --config vite.sdk.config.ts && tsc -p tsconfig.sdk.json",
+    "build:all": "npm run build && npm run build:sdk",
+    "prepublishOnly": "npm run build:sdk",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "jssip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
+
