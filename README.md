@@ -83,14 +83,14 @@ Hipcall OAuth 2.0 yönlendirmesi `https://envelope-footrest-flyable.ngrok-free.d
 
 ---
 
-## 🔑 SIP Token & Kimlik Doğrulama Akışı
+## 🔑 SIP Token & Kimlik Doğrulama Akışı (OAuth 2.0 PKCE Destekli)
 
-1. **OAuth 2.0 Code Exchange:** Tarayıcı `/hipcall-oauth/token` proxy'si üzerinden token takasını güvenle yapar (`client_secret` tarayıcıya sızmaz).
+1. **OAuth 2.0 PKCE (RFC 7636):** SDK, tarayıcıda `code_verifier` ve SHA-256 tabanlı `code_challenge` üreterek authorization code akışını yürütür. Bu sayede hiçbir `client_secret` tarayıcıya konulmaz ve sızma riski tamamen ortadan kalkar.
 2. **SIP Token Alma (`POST /api/v3/sip/token`):**
    - Header: `Authorization: Bearer <access_token>`, `Content-Type: application/json`
-   - Body: `{"user_id": <userId>}`
-   - **Otomatik ID Tespiti:** Kullanıcı ID boş bırakılırsa veya yetki hatası (`403 other users`) durumunda SDK otomatik olarak `GET /api/v3/profile` endpoint'inden kullanıcının kendi gerçek ID'sini öğrenip token'ı çeker.
-3. **WebSocket SIP Kaydı:** `wss://sip.hipcall.com.tr:8443` üzerinden JsSIP `UA` başlatılır; Bearer Token ve digest şifresi ile periyodik (300 sn) `REGISTER` yenilenir.
+   - Body: `{"user_id": <userId>}` veya gövdesiz `{}`
+   - **Otomatik ID Tespiti:** Kullanıcı ID belirtilmediğinde veya yetki hatası (`403 other users`) durumunda SDK otomatik olarak `GET /api/v3/profile` endpoint'inden kullanıcının kendi gerçek ID'sini öğrenip token'ı çeker.
+3. **WebSocket SIP Kaydı:** Hipcall Media Gateway (`wss_url`) üzerinden JsSIP `UA` başlatılır; Bearer Token ve digest şifresi ile periyodik (300 sn) `REGISTER` yenilenir.
 
 ---
 
@@ -98,12 +98,12 @@ Hipcall OAuth 2.0 yönlendirmesi `https://envelope-footrest-flyable.ngrok-free.d
 
 ### Örnek Entegrasyon:
 ```ts
-import { HipcallClient } from './sdk';
+import { HipcallClient } from '@hipcall/webrtc-sdk';
 
 const client = new HipcallClient({
   apiBaseUrl: 'https://use.hipcall.com.tr/api/v3',
   wsUrl: 'wss://sip.hipcall.com.tr:8443',
-  clientId: 'y1DUaxQVRzar-Okts8rWVkvGkAfLMJEF6e_wdyph3CM',
+  clientId: 'YOUR_HIPCALL_CLIENT_ID',
   redirectUri: 'https://crm.siteniz.com/callback',
 });
 

@@ -38,9 +38,10 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
   // 1) Kimlik doğrulama
   // =====================================================================
 
-  /** Kullanıcıyı Hipcall authorize sayfasına yönlendirir. */
-  loginWithOAuth(): void {
-    window.location.assign(this.oauth.buildAuthorizeUrl());
+  /** Kullanıcıyı Hipcall authorize sayfasına yönlendirir (RFC 7636 PKCE destekli). */
+  async loginWithOAuth(): Promise<void> {
+    const url = await this.oauth.buildAuthorizeUrl();
+    window.location.assign(url);
   }
 
   /** /callback?code=...&state=... dönüşünü işler. State kontrolü yapılır. */

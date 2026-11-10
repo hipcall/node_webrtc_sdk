@@ -19,6 +19,8 @@ export interface HipcallConfig {
   scope: string;
   state: string;
   storageKey: string;
+  /** RFC 7636 PKCE desteği (varsayılan: true). Client Secret olmadan güvenli tarayıcı OAuth akışı sağlar. */
+  usePKCE?: boolean;
   /** REGISTER süresi (sn) */
   registerExpires: number;
   /**

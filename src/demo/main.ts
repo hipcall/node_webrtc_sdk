@@ -258,9 +258,9 @@ const getUserId = (): number | string | undefined => {
   return undefined;
 };
 
-$('btnOAuth').onclick = () => {
+$('btnOAuth').onclick = async () => {
   getUserId();
-  client.loginWithOAuth();
+  await client.loginWithOAuth();
 };
 
 const FORM_KEY = 'hipcall_demo_manual';

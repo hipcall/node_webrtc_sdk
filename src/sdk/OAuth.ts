@@ -1,12 +1,42 @@
 import type { HipcallConfig, SipCredentials, TokenSet } from './types';
 
-/** OAuth2 (Authorization Code) + SIP credentials çekme + token saklama */
+/**
+ * RFC 7636 PKCE (Proof Key for Code Exchange) yardımcıları
+ */
+export function generateCodeVerifier(length = 64): string {
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  const array = new Uint8Array(length);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+  } else {
+    for (let i = 0; i < length; i++) array[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(array, (byte) => charset[byte % charset.length]).join('');
+}
+
+export async function generateCodeChallenge(verifier: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle && crypto.subtle.digest) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
+  return verifier;
+}
+
+/** OAuth2 (Authorization Code + PKCE) + SIP credentials çekme + token saklama */
 export class OAuthModule {
   constructor(private cfg: HipcallConfig) {}
 
   // ---------- storage ----------
   private get tokenKey() {
     return `${this.cfg.storageKey}:tokens`;
+  }
+  private get pkceKey() {
+    return `${this.cfg.storageKey}:pkce_verifier`;
   }
   loadTokens(): TokenSet | null {
     try {
@@ -21,23 +51,61 @@ export class OAuthModule {
   }
   clearTokens() {
     localStorage.removeItem(this.tokenKey);
+    try {
+      sessionStorage.removeItem(this.pkceKey);
+    } catch {}
   }
 
   // ---------- authorize ----------
-  buildAuthorizeUrl(): string {
+  /**
+   * RFC 7636 PKCE uyumlu authorize URL oluşturur.
+   * `code_verifier` sessionStorage'a saklanır ve `code_challenge` URL parametresine eklenir.
+   */
+  async buildAuthorizeUrl(options?: { codeChallenge?: string }): Promise<string> {
     const u = new URL(this.cfg.authorizeUrl);
     u.searchParams.set('response_type', 'code');
     u.searchParams.set('client_id', this.cfg.clientId);
     u.searchParams.set('redirect_uri', this.cfg.redirectUri);
     u.searchParams.set('scope', this.cfg.scope);
     u.searchParams.set('state', this.cfg.state);
+
+    if (this.cfg.usePKCE !== false) {
+      const verifier = generateCodeVerifier();
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(this.pkceKey, verifier);
+        }
+      } catch {
+        /* storage kısıtlı ortam */
+      }
+      const challenge = options?.codeChallenge || (await generateCodeChallenge(verifier));
+      u.searchParams.set('code_challenge', challenge);
+      u.searchParams.set('code_challenge_method', 'S256');
+    }
+
+    return u.toString();
+  }
+
+  /** Senkron veya harici challenge ile URL oluşturma (fallback) */
+  buildAuthorizeUrlSync(codeChallenge?: string): string {
+    const u = new URL(this.cfg.authorizeUrl);
+    u.searchParams.set('response_type', 'code');
+    u.searchParams.set('client_id', this.cfg.clientId);
+    u.searchParams.set('redirect_uri', this.cfg.redirectUri);
+    u.searchParams.set('scope', this.cfg.scope);
+    u.searchParams.set('state', this.cfg.state);
+    if (codeChallenge) {
+      u.searchParams.set('code_challenge', codeChallenge);
+      u.searchParams.set('code_challenge_method', 'S256');
+    }
     return u.toString();
   }
 
   // ---------- token ----------
   private async postToken(params: Record<string, string>): Promise<TokenSet> {
     const body = new URLSearchParams({ client_id: this.cfg.clientId, ...params });
-    // clientSecret yalnızca (güvensiz) doğrudan çağrı için; proxy kullanılıyorsa sunucu ekler.
+    // clientSecret yalnızca tanımlıysa eklenir (sunucu proxy'si veya gizli istemciler için).
+    // PKCE akışında tarayıcıda client_secret tutulmaz/gönderilmez.
     if (this.cfg.clientSecret) body.set('client_secret', this.cfg.clientSecret);
     const res = await fetch(this.cfg.tokenUrl, {
       method: 'POST',
@@ -58,11 +126,26 @@ export class OAuthModule {
   }
 
   async exchangeCode(code: string): Promise<TokenSet> {
-    const t = await this.postToken({
+    const params: Record<string, string> = {
       grant_type: 'authorization_code',
       code,
       redirect_uri: this.cfg.redirectUri,
-    });
+    };
+
+    // PKCE verifier varsa parametrelere ekle
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        const verifier = sessionStorage.getItem(this.pkceKey);
+        if (verifier) {
+          params.code_verifier = verifier;
+          sessionStorage.removeItem(this.pkceKey);
+        }
+      }
+    } catch {
+      /* yoksay */
+    }
+
+    const t = await this.postToken(params);
     this.saveTokens(t);
     return t;
   }
