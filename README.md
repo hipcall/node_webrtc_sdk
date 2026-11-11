@@ -2,13 +2,11 @@
 
 > **Language / Dil:** **English** | [Türkçe (`README_TR.md`)](./README_TR.md)
 
-Official WebRTC and SIP JavaScript/TypeScript SDK for the Hipcall Cloud PBX platform, along with a sample browser webphone widget for development and testing.
+Official WebRTC and SIP JavaScript/TypeScript SDK for the Hipcall Cloud PBX platform.
 
-Use `@hipcall/webrtc-sdk` to embed voice calling, incoming call alerts, hold/mute controls, DTMF keypad input, and audio device selection directly into your CRM, helpdesk, or internal web application.
+Use `@hipcall/webrtc-sdk` to embed voice calling, incoming call alerts, hold/mute controls, DTMF keypad input, and audio device selection directly into your CRM, helpdesk, or web application.
 
 ## Installation
-
-Install the package from npm:
 
 ```bash
 npm install @hipcall/webrtc-sdk
@@ -35,7 +33,7 @@ const client = new HipcallClient({
 
 // 1. Register event listeners
 client.on('registered', () => {
-  console.log('Connected and registered with Hipcall SIP server');
+  console.log('Registered with Hipcall SIP server');
 });
 
 client.on('incomingCall', (call) => {
@@ -54,7 +52,7 @@ client.on('error', ({ code, message }) => {
   console.error(`[${code}] ${message}`);
 });
 
-// 2. Authenticate with OAuth 2.0 (PKCE) and connect to SIP
+// 2. Authenticate with OAuth 2.0 (PKCE) and connect
 if (!client.isAuthenticated()) {
   const loginUrl = await client.getLoginUrlAsync();
   window.location.href = loginUrl;
@@ -79,9 +77,9 @@ if (code) {
 
 ## Authentication and SIP Token Flow
 
-1. **OAuth 2.0 with PKCE (RFC 7636):** When `getLoginUrlAsync()` is called, the SDK generates a cryptographic `code_verifier` and SHA-256 `code_challenge` (`S256`) in the browser using the Web Crypto API. During `handleOAuthCallback(code)`, the `code_verifier` is sent to the token endpoint so browser applications never need to store a `client_secret`.
+1. **OAuth 2.0 with PKCE (RFC 7636):** Calling `getLoginUrlAsync()` generates a cryptographic `code_verifier` and SHA-256 `code_challenge` (`S256`) in the browser using the Web Crypto API. During `handleOAuthCallback(code)`, the `code_verifier` is sent to the token endpoint so browser applications never store a `client_secret`.
 2. **Dynamic SIP Credentials (`POST /api/v3/sip/token`):** Calling `connectSIP()` requests temporary SIP credentials (`username`, `password`, `domain`, and `wss_url`) from the Hipcall API. If a `user_id` is not provided, the SDK automatically resolves the authenticated user's ID from `GET /api/v3/profile`.
-3. **SIP over WebSocket (`REGISTER`):** The SDK initializes a JsSIP User Agent over `wss://`, completes digest authentication, and refreshes the SIP registration every 300 seconds.
+3. **SIP over WebSocket (`REGISTER`):** The SDK initializes a JsSIP User Agent over `wss://`, completes digest authentication, and refreshes registration every 300 seconds.
 
 ### Manual SIP Credentials (Optional)
 
@@ -114,7 +112,7 @@ const isMuted = client.toggleMute();
 // Put call on hold / resume call (SIP re-INVITE)
 const isOnHold = await client.toggleHold();
 
-// Send DTMF tones during an active call (RFC 2833 / SIP INFO)
+// Send DTMF tones during an active call
 client.sendDTMF('1');
 
 // List and switch audio output devices (speakers / headsets)
@@ -138,31 +136,20 @@ if (speakers.length > 0) {
 | `callEnded` | `CallInfo \| null` | Fired when the call is terminated or rejected. |
 | `callHoldChanged` | `{ isHeld: boolean }` | Fired when the call hold state changes. |
 | `callMuteChanged` | `{ isMuted: boolean }` | Fired when the microphone mute state changes. |
-| `sipLog` | `{ direction: 'IN' \| 'OUT' \| 'INFO'; message: string; timestamp: string }` | Raw SIP signaling and diagnostic log events. |
-| `error` | `{ code: string; message: string; originalError?: unknown }` | Fired on OAuth, API, WebRTC, or SIP errors. |
+| `sipLog` | `{ direction, message, timestamp }` | Raw SIP signaling and diagnostic log events. |
+| `error` | `{ code, message, originalError? }` | Fired on OAuth, API, WebRTC, or SIP errors. |
 
-## Repository Structure
+## Project Modules
 
-```text
-├── src/
-│   ├── sdk/                     # Standalone @hipcall/webrtc-sdk source
-│   │   ├── HipcallClient.ts     # Main event-driven WebRTC & SIP client
-│   │   ├── OAuth.ts             # OAuth 2.0 + PKCE (S256) and SIP token client
-│   │   ├── SoundEffects.ts      # Web Audio API ringtone, ringback, and DTMF synthesizer
-│   │   ├── EventEmitter.ts      # Typed event emitter
-│   │   ├── types.ts             # Public TypeScript interfaces and event types
-│   │   ├── config.ts            # Default configuration values
-│   │   └── index.ts             # Public package exports
-│   │
-│   └── demo/                    # Sample Webphone Widget & Test Application
-│       ├── main.ts              # Demo UI logic, dialpad, and live SIP log console
-│       └── style.css            # Demo webphone styles
-│
-├── vite.config.ts               # Development server & local CORS proxy
-├── vite.sdk.config.ts           # Library build configuration (ESM + UMD)
-├── tsconfig.json                # TypeScript configuration
-└── tsconfig.sdk.json            # TypeScript declaration (.d.ts) build config
-```
+| Path | Description |
+| :--- | :--- |
+| `src/sdk/HipcallClient.ts` | Main event-driven WebRTC & SIP client |
+| `src/sdk/OAuth.ts` | OAuth 2.0 + PKCE (`S256`) and SIP token client |
+| `src/sdk/SoundEffects.ts` | Web Audio API ringtone, ringback, and DTMF synthesizer |
+| `src/sdk/EventEmitter.ts` | Type-safe event emitter |
+| `src/sdk/types.ts` | Public TypeScript interfaces and event types |
+| `src/sdk/config.ts` | Default configuration values |
+| `src/demo/` | Sample browser webphone widget and test application |
 
 ## Running the Demo Webphone Locally
 
@@ -172,7 +159,7 @@ if (speakers.length > 0) {
 cp .env.example .env
 ```
 
-2. Install dependencies and start the Vite development server:
+2. Install dependencies and start the development server:
 
 ```bash
 npm install
@@ -181,27 +168,23 @@ npm run dev
 
 3. Open `http://localhost:5173` in your browser.
 
-## Building the SDK
+## Building from Source
 
 ```bash
 # Type-check the project
 npm run typecheck
 
-# Build standalone SDK bundles (ESM, UMD, and TypeScript declarations in dist/sdk/)
+# Build standalone SDK bundles (dist/sdk/)
 npm run build:sdk
 
-# Build both the demo application and the standalone SDK
+# Build both the demo app and standalone SDK
 npm run build:all
 ```
 
-Build artifacts are generated in `dist/sdk/`:
-- `dist/sdk/hipcall-webrtc-sdk.es.js` (ES Module bundle for Vite, Webpack, Next.js, etc.)
-- `dist/sdk/hipcall-webrtc-sdk.umd.js` (UMD bundle for `<script>` tags and CommonJS)
+Build outputs in `dist/sdk/`:
+- `dist/sdk/hipcall-webrtc-sdk.es.js` (ES Module bundle)
+- `dist/sdk/hipcall-webrtc-sdk.umd.js` (UMD / CommonJS bundle)
 - `dist/sdk/types/index.d.ts` (TypeScript type declarations)
-
-## CI/CD Publishing
-
-This repository includes a GitHub Actions workflow (`.github/workflows/publish.yml`) that runs `npm run typecheck` and `npm run build:all`, then publishes `@hipcall/webrtc-sdk` to npm whenever a new GitHub Release or `v*` tag is pushed. Configure the `NPM_TOKEN` repository secret in GitHub Settings (`Settings -> Secrets and variables -> Actions`) to enable automated publishing.
 
 ## License
 
