@@ -26,6 +26,7 @@
   "files": [
     "dist/sdk",
     "README.md",
+    "README_TR.md",
     "LICENSE"
   ],
   "keywords": [
