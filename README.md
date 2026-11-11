@@ -1,154 +1,206 @@
-# Hipcall WebRTC / SIP JavaScript SDK & Webphone Widget
+# Hipcall WebRTC & SIP JavaScript SDK (`@hipcall/webrtc-sdk`)
 
-Hipcall bulut santral sistemi için müşterilerin kendi web sitelerine ve CRM sistemlerine kolayca gömebileceği **WebRTC/SIP JavaScript SDK (`hipcall-webrtc-sdk`)** ve test/geliştirme için hazırlanmış **Örnek Webphone Widget (Demo App)**.
+Official WebRTC and SIP JavaScript/TypeScript SDK for the Hipcall Cloud PBX platform, along with a sample browser webphone widget for development and testing.
 
----
+Use `@hipcall/webrtc-sdk` to embed voice calling, incoming call alerts, hold/mute controls, DTMF keypad input, and audio device selection directly into your CRM, helpdesk, or internal web application.
 
-## 📦 NPM Paketi Olarak Kurulum
+## Installation
 
-Hipcall resmi NPM paketi üzerinden projelerinize ekleyebilirsiniz:
+Install the package from npm:
 
 ```bash
 npm install @hipcall/webrtc-sdk
-# veya
+# or
 yarn add @hipcall/webrtc-sdk
-# veya
+# or
 pnpm add @hipcall/webrtc-sdk
 ```
 
----
+## Quick Start
 
-## 🚀 GitHub Actions ile Otomatik NPM Dağıtımı (CI/CD)
-
-Proje içerisinde `.github/workflows/publish.yml` dosyası hazır olarak tanımlanmıştır:
-1. Hipcall GitHub organizasyonunda bir release (etiket) yayınlandığında Action otomatik tetiklenir.
-2. `npm run typecheck` ve `npm run build:all` adımlarını çalıştırarak tip ve derleme doğrulaması yapar.
-3. Hipcall'un resmi `NPM_TOKEN` secret'ı ile paketi doğrudan `@hipcall/webrtc-sdk` adıyla npmjs.com üzerinde yayınlar.
-4. Böylece staj sonrasında Hipcall ekibi yeni bir versiyon yayınlamak istediğinde sadece GitHub'dan yeni bir release açması yeterlidir.
-
----
-
-## 📁 Proje Mimarisi
-
-```
-├── src/
-│   ├── sdk/                     # Bağımsız Hipcall WebRTC SDK
-│   │   ├── HipcallClient.ts     # Event-driven ana istemci (JsSIP & WebRTC sarmalayıcı)
-│   │   ├── OAuth.ts             # OAuth 2.0 Code Exchange, Token & /profile yönetimi
-│   │   ├── SoundEffects.ts      # Web Audio API ile dahili zil, arama tonu ve DTMF sesleri
-│   │   ├── EventEmitter.ts      # Tip-güvenli hafif Event Emitter
-│   │   ├── types.ts             # TypeScript arayüz ve event tipleri
-│   │   ├── config.ts            # Varsayılan konfigürasyon değerleri
-│   │   └── index.ts             # SDK public dışa aktarımları
-│   │
-│   └── demo/                    # Örnek Webphone Widget & Test Uygulaması
-│       ├── main.ts              # Widget UI mantığı, dialpad ve SIP log konsolu
-│       └── style.css            # Modern, koyu temalı kompakt webphone stilleri
-│
-├── vite.config.ts               # Dev server & CORS proxy (/hipcall-oauth/token, /hipcall-api)
-├── vite.sdk.config.ts           # Bağımsız SDK kütüphane derleyicisi (ESM + UMD)
-├── tsconfig.json                # Proje TypeScript ayarları
-├── tsconfig.sdk.json            # SDK tip bildirim (.d.ts) üretici
-└── .env                         # OAuth ve SIP proxy ayarları
-```
-
----
-
-## 🚀 Hızlı Başlangıç
-
-### 1. Bağımlılıkları Yükleyin ve Başlatın
-```bash
-npm install
-npm run dev
-```
-Uygulama yerelde `http://localhost:5173` üzerinde çalışmaya başlayacaktır.
-
----
-
-## 🌐 ngrok ile Eşleştirme ve OAuth Testi
-
-Hipcall OAuth 2.0 yönlendirmesi `https://envelope-footrest-flyable.ngrok-free.dev/callback` olarak tanımlıdır:
-
-1. **ngrok Auth Token tanımlayın:**
-   ```bash
-   ngrok config add-authtoken <BURAYA_AUTHTOKEN>
-   ```
-2. **Rezerve domain ile tüneli başlatın:**
-   ```bash
-   ngrok http --url=envelope-footrest-flyable.ngrok-free.dev 5173
-   ```
-3. **Tarayıcıda ngrok adresini açın:**
-   - Doğrudan `https://envelope-footrest-flyable.ngrok-free.dev` adresine gidin (*localhost üzerinden açmayın; oturum ve callback çerezleri ngrok origin'i ile eşleşir*).
-4. **"Hipcall ile Giriş Yap"** butonuna basın. Yetkilendirme sonrası token otomatik takas edilir, kullanıcının SIP token'ı çekilir ve santrale `REGISTER` olunur.
-
----
-
-## 🔑 SIP Token & Kimlik Doğrulama Akışı (OAuth 2.0 PKCE Destekli)
-
-1. **OAuth 2.0 PKCE (RFC 7636):** SDK, tarayıcıda `code_verifier` ve SHA-256 tabanlı `code_challenge` üreterek authorization code akışını yürütür. Bu sayede hiçbir `client_secret` tarayıcıya konulmaz ve sızma riski tamamen ortadan kalkar.
-2. **SIP Token Alma (`POST /api/v3/sip/token`):**
-   - Header: `Authorization: Bearer <access_token>`, `Content-Type: application/json`
-   - Body: `{"user_id": <userId>}` veya gövdesiz `{}`
-   - **Otomatik ID Tespiti:** Kullanıcı ID belirtilmediğinde veya yetki hatası (`403 other users`) durumunda SDK otomatik olarak `GET /api/v3/profile` endpoint'inden kullanıcının kendi gerçek ID'sini öğrenip token'ı çeker.
-3. **WebSocket SIP Kaydı:** Hipcall Media Gateway (`wss_url`) üzerinden JsSIP `UA` başlatılır; Bearer Token ve digest şifresi ile periyodik (300 sn) `REGISTER` yenilenir.
-
----
-
-## 🛠️ SDK Kullanımı (CRM / Web Uygulamalarına Gömme)
-
-### Örnek Entegrasyon:
 ```ts
 import { HipcallClient } from '@hipcall/webrtc-sdk';
 
 const client = new HipcallClient({
-  apiBaseUrl: 'https://use.hipcall.com.tr/api/v3',
-  wsUrl: 'wss://sip.hipcall.com.tr:8443',
-  clientId: 'YOUR_HIPCALL_CLIENT_ID',
-  redirectUri: 'https://crm.siteniz.com/callback',
+  authorizeUrl: 'https://use.hipcall.com/oauth/authorize',
+  tokenUrl: 'https://use.hipcall.com/oauth/token',
+  apiBaseUrl: 'https://use.hipcall.com/api/v3',
+  wsUrl: 'wss://mgw.hipcall.com:8443',
+  clientId: 'YOUR_OAUTH_CLIENT_ID',
+  redirectUri: 'https://app.example.com/callback',
+  usePKCE: true,
 });
 
-// 1. Olay Dinleyicileri
-client.on('registered', () => console.log('Santrale bağlanıldı!'));
-client.on('incomingCall', (call) => console.log('Gelen arama:', call.remoteNumber));
-client.on('callConnected', (call) => console.log('Çağrı bağlandı:', call));
-client.on('callEnded', () => console.log('Çağrı bitti'));
-client.on('sipLog', ({ direction, message }) => console.log(`[SIP ${direction}]`, message));
-
-// 2. Bağlantı (OAuth veya Manuel)
-await client.connectSIP(); // OAuth ile token çekip bağlanır
-// Veya bypass/manuel mod:
-client.setManualCredentials({
-  username: '1001',
-  realm: 'hesabiniz.sip.hipcall.com.tr',
-  sipToken: '<SIP_JWT_TOKEN>',
-  wsServers: ['wss://sip.hipcall.com.tr:8443']
+// 1. Register event listeners
+client.on('registered', () => {
+  console.log('Connected and registered with Hipcall SIP server');
 });
-await client.connectSIP();
 
-// 3. Çağrı Kontrolleri
-client.call('08501234567');   // Arama başlat
-client.answer();              // Gelen çağrıyı yanıtla
-client.toggleMute();          // Mikrofonu sustur / aç
-await client.toggleHold();    // Çağrıyı bekletmeye al (HOLD / UNHOLD)
-client.sendDTMF('5');         // Tuşlama gönder
-client.hangup();              // Çağrıyı sonlandır
+client.on('incomingCall', (call) => {
+  console.log('Incoming call from:', call.remoteNumber);
+});
+
+client.on('callConnected', (call) => {
+  console.log('Call connected:', call.remoteNumber);
+});
+
+client.on('callEnded', () => {
+  console.log('Call ended');
+});
+
+client.on('error', ({ code, message }) => {
+  console.error(`[${code}] ${message}`);
+});
+
+// 2. Authenticate with OAuth 2.0 (PKCE) and connect to SIP
+if (!client.isAuthenticated()) {
+  const loginUrl = await client.getLoginUrlAsync();
+  window.location.href = loginUrl;
+} else {
+  await client.connectSIP();
+}
 ```
 
----
+### Handling the OAuth 2.0 Callback
 
-## 📦 Kütüphane Olarak Derleme (Standalone SDK Build)
+On your `redirectUri` page (for example `/callback`), exchange the authorization code for an access token and start the SIP session:
 
-Müşterilerinize veya CRM projelerinize bağımsız npm paketi / `<script>` kütüphanesi olarak dağıtmak için:
+```ts
+const params = new URLSearchParams(window.location.search);
+const code = params.get('code');
+
+if (code) {
+  await client.handleOAuthCallback(code);
+  await client.connectSIP();
+}
+```
+
+## Authentication and SIP Token Flow
+
+1. **OAuth 2.0 with PKCE (RFC 7636):** When `getLoginUrlAsync()` is called, the SDK generates a cryptographic `code_verifier` and SHA-256 `code_challenge` (`S256`) in the browser using the Web Crypto API. During `handleOAuthCallback(code)`, the `code_verifier` is sent to the token endpoint so browser applications never need to store a `client_secret`.
+2. **Dynamic SIP Credentials (`POST /api/v3/sip/token`):** Calling `connectSIP()` requests temporary SIP credentials (`username`, `password`, `domain`, and `wss_url`) from the Hipcall API. If a `user_id` is not provided, the SDK automatically resolves the authenticated user's ID from `GET /api/v3/profile`.
+3. **SIP over WebSocket (`REGISTER`):** The SDK initializes a JsSIP User Agent over `wss://`, completes digest authentication, and refreshes the SIP registration every 300 seconds.
+
+### Manual SIP Credentials (Optional)
+
+If your backend fetches SIP credentials on the server side, you can pass them directly to the client without running OAuth in the browser:
+
+```ts
+client.setManualCredentials({
+  username: '1001',
+  realm: 'account.sip.hipcall.com',
+  sipToken: 'YOUR_SIP_PASSWORD_OR_JWT',
+  wsServers: ['wss://mgw.hipcall.com:8443'],
+});
+
+await client.connectSIP();
+```
+
+## Call Controls and Audio Devices
+
+```ts
+// Place an outbound call
+client.call('08501234567');
+
+// Answer or hang up an active/incoming call
+client.answer();
+client.hangup();
+
+// Mute / unmute microphone
+const isMuted = client.toggleMute();
+
+// Put call on hold / resume call (SIP re-INVITE)
+const isOnHold = await client.toggleHold();
+
+// Send DTMF tones during an active call (RFC 2833 / SIP INFO)
+client.sendDTMF('1');
+
+// List and switch audio output devices (speakers / headsets)
+const speakers = await client.getAudioOutputDevices();
+if (speakers.length > 0) {
+  await client.setAudioOutputDevice(speakers[0].deviceId);
+}
+```
+
+## SDK Events
+
+| Event | Payload | Description |
+| :--- | :--- | :--- |
+| `stateChanged` | `ConnectionState` | Fired when the connection state changes (`disconnected`, `connecting`, `connected`, `registered`, `error`). |
+| `registered` | `void` | Fired when `SIP 200 OK` is received for `REGISTER`. |
+| `unregistered` | `void` | Fired when the SIP registration ends. |
+| `registrationFailed` | `{ cause: string }` | Fired when SIP registration is rejected. |
+| `incomingCall` | `CallInfo` | Fired when an inbound call arrives. |
+| `callProgress` | `CallInfo` | Fired when an outbound call is ringing (`180 Ringing` / `183 Session Progress`). |
+| `callConnected` | `CallInfo` | Fired when media negotiation completes and audio starts flowing. |
+| `callEnded` | `CallInfo \| null` | Fired when the call is terminated or rejected. |
+| `callHoldChanged` | `{ isHeld: boolean }` | Fired when the call hold state changes. |
+| `callMuteChanged` | `{ isMuted: boolean }` | Fired when the microphone mute state changes. |
+| `sipLog` | `{ direction: 'IN' \| 'OUT' \| 'INFO'; message: string; timestamp: string }` | Raw SIP signaling and diagnostic log events. |
+| `error` | `{ code: string; message: string; originalError?: unknown }` | Fired on OAuth, API, WebRTC, or SIP errors. |
+
+## Repository Structure
+
+```text
+├── src/
+│   ├── sdk/                     # Standalone @hipcall/webrtc-sdk source
+│   │   ├── HipcallClient.ts     # Main event-driven WebRTC & SIP client
+│   │   ├── OAuth.ts             # OAuth 2.0 + PKCE (S256) and SIP token client
+│   │   ├── SoundEffects.ts      # Web Audio API ringtone, ringback, and DTMF synthesizer
+│   │   ├── EventEmitter.ts      # Typed event emitter
+│   │   ├── types.ts             # Public TypeScript interfaces and event types
+│   │   ├── config.ts            # Default configuration values
+│   │   └── index.ts             # Public package exports
+│   │
+│   └── demo/                    # Sample Webphone Widget & Test Application
+│       ├── main.ts              # Demo UI logic, dialpad, and live SIP log console
+│       └── style.css            # Demo webphone styles
+│
+├── vite.config.ts               # Development server & local CORS proxy
+├── vite.sdk.config.ts           # Library build configuration (ESM + UMD)
+├── tsconfig.json                # TypeScript configuration
+└── tsconfig.sdk.json            # TypeScript declaration (.d.ts) build config
+```
+
+## Running the Demo Webphone Locally
+
+1. Copy `.env.example` to `.env` and fill in your Hipcall OAuth application credentials:
 
 ```bash
-# Sadece SDK'yı derler (ESM, UMD ve TypeScript .d.ts dosyaları)
+cp .env.example .env
+```
+
+2. Install dependencies and start the Vite development server:
+
+```bash
+npm install
+npm run dev
+```
+
+3. Open `http://localhost:5173` in your browser.
+
+## Building the SDK
+
+```bash
+# Type-check the project
+npm run typecheck
+
+# Build standalone SDK bundles (ESM, UMD, and TypeScript declarations in dist/sdk/)
 npm run build:sdk
 
-# Hem Webphone Demo hem SDK kütüphanesini derler
+# Build both the demo application and the standalone SDK
 npm run build:all
 ```
 
-Çıktılar `dist/sdk/` klasöründe üretilir:
-- `dist/sdk/hipcall-webrtc-sdk.es.js` (Modern ESM bundler'lar: Vite, Webpack, Next.js vb.)
-- `dist/sdk/hipcall-webrtc-sdk.umd.js` (Tarayıcıda `<script src="...">` veya Node require)
-- `dist/sdk/types/` (TypeScript tip tanımlamaları)
+Build artifacts are generated in `dist/sdk/`:
+- `dist/sdk/hipcall-webrtc-sdk.es.js` (ES Module bundle for Vite, Webpack, Next.js, etc.)
+- `dist/sdk/hipcall-webrtc-sdk.umd.js` (UMD bundle for `<script>` tags and CommonJS)
+- `dist/sdk/types/index.d.ts` (TypeScript type declarations)
+
+## CI/CD Publishing
+
+This repository includes a GitHub Actions workflow (`.github/workflows/publish.yml`) that runs `npm run typecheck` and `npm run build:all`, then publishes `@hipcall/webrtc-sdk` to npm whenever a new GitHub Release or `v*` tag is pushed. Configure the `NPM_TOKEN` repository secret in GitHub Settings (`Settings -> Secrets and variables -> Actions`) to enable automated publishing.
+
+## License
+
+[MIT](./LICENSE)

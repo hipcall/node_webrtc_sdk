@@ -6,12 +6,12 @@
   "author": "Hipcall <dev@hipcall.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hipcall/node_sdk.git"
+    "url": "git+https://github.com/hipcall/node_webrtc_sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/hipcall/node_sdk/issues"
+    "url": "https://github.com/hipcall/node_webrtc_sdk/issues"
   },
-  "homepage": "https://github.com/hipcall/node_sdk#readme",
+  "homepage": "https://github.com/hipcall/node_webrtc_sdk#readme",
   "type": "module",
   "main": "./dist/sdk/hipcall-webrtc-sdk.umd.js",
   "module": "./dist/sdk/hipcall-webrtc-sdk.es.js",
