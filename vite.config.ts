@@ -1,9 +1,9 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 /**
- * OAuth token exchange proxy.
- * Tarayıcı -> POST /hipcall-oauth/token (client_secret YOK)
- * Dev server -> client_secret ekler -> https://use.hipcall.com.tr/oauth/token
+ * OAuth2 PKCE token exchange CORS proxy.
+ * Tarayıcı -> POST /hipcall-oauth/token (client_id + code + code_verifier, client_secret YOK)
+ * Dev server -> CORS engeline takılmaması için doğrudan https://use.hipcall.com.tr/oauth/token adresine iletir
  */
 function hipcallOAuthProxy(env: Record<string, string>): Plugin {
   const tokenUrl = env.VITE_HIPCALL_TOKEN_URL || 'https://use.hipcall.com.tr/oauth/token';
@@ -20,8 +20,15 @@ function hipcallOAuthProxy(env: Record<string, string>): Plugin {
         req.on('end', async () => {
           try {
             const params = new URLSearchParams(raw);
-            params.set('client_id', env.VITE_HIPCALL_CLIENT_ID);
-            params.set('client_secret', env.HIPCALL_CLIENT_SECRET || '');
+            if (!params.get('client_id') && env.VITE_HIPCALL_CLIENT_ID) {
+              params.set('client_id', env.VITE_HIPCALL_CLIENT_ID);
+            }
+            // PKCE akışında client_secret gönderilmez (yalnızca açıkça tanımlanmışsa eklenir)
+            if (env.HIPCALL_CLIENT_SECRET) {
+              params.set('client_secret', env.HIPCALL_CLIENT_SECRET);
+            } else {
+              params.delete('client_secret');
+            }
             const upstream = await fetch(tokenUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },

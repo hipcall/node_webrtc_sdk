@@ -4,4 +4,7 @@ dist
 
 # Makaleler & Taslaklar (GitHub'a atılmaz)
 articles/
+node_sdk/
+npm_test/
+
 

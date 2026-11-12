@@ -282,10 +282,17 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
     });
   }
 
-  answer(): void {
+  answer(mediaStream?: MediaStream): void {
     if (!this.session || this.session.direction !== 'incoming') throw new Error('Cevaplanacak gelen çağrı yok.');
     this.stopSounds();
+    if (mediaStream) {
+      mediaStream.getVideoTracks().forEach((vt) => {
+        vt.stop();
+        mediaStream.removeTrack(vt);
+      });
+    }
     this.session.answer({
+      mediaStream,
       mediaConstraints: { audio: true, video: false },
       pcConfig: this.pcConfig(),
       extraHeaders: this.config.authMode !== 'password' ? this.bearerHeaders() : [],
@@ -423,6 +430,9 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
     };
     this.callInfo = info;
 
+    if (session.connection) {
+      this.attachPeerConnection(session.connection);
+    }
     session.on('peerconnection', (pe: any) => this.attachPeerConnection(pe.peerconnection));
     session.on('sdp', (ev: any) => {
       if (ev.originator === 'local') {
@@ -436,17 +446,27 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
     session.on('sending', (ev: any) => {
       this.log('info', `SIP ${ev.request.method} paketi WebSocket üzerinden gönderiliyor...`);
     });
+    let iceFallbackTimer: any = null;
     session.on('icecandidate', (ev: any) => {
-      // srflx (public IP) veya gerçek yerel LAN (192.168.x.x) adayı bulunduğunda hızlıca devam et
       const cand = ev.candidate;
       if (cand && typeof ev.ready === 'function') {
-        const addr = cand.address || cand.ip || '';
-        if (cand.type === 'srflx' || addr.startsWith('192.168.')) {
+        // STUN sunucusundan gerçek genel IP (srflx) geldiğinde hemen hazır ol
+        if (cand.type === 'srflx') {
+          if (iceFallbackTimer) clearTimeout(iceFallbackTimer);
           setTimeout(() => {
             try {
               ev.ready();
             } catch {}
-          }, 100);
+          }, 150);
+          return;
+        }
+        // STUN gecikirse en fazla 1000ms bekle, yerel host adayı yüzünden STUN'ı 100ms'de kesme!
+        if (!iceFallbackTimer) {
+          iceFallbackTimer = setTimeout(() => {
+            try {
+              ev.ready();
+            } catch {}
+          }, 1000);
         }
       }
     });
@@ -466,11 +486,16 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
       }
       this.emit('callRinging', info);
     });
-    session.on('accepted', () => this.log('info', '200 OK alındı/gönderildi.'));
+    session.on('accepted', () => {
+      this.stopSounds();
+      this.log('info', '200 OK alındı/gönderildi.');
+      if (session.connection) this.ensureRemoteAudio(session.connection);
+    });
     session.on('confirmed', () => {
       this.stopSounds();
       info.startedAt = Date.now();
       this.log('info', 'Çağrı bağlandı (ACK).');
+      if (session.connection) this.ensureRemoteAudio(session.connection);
       this.emit('callConnected', info);
     });
     session.on('ended', (ev: any) => this.finishCall(false, ev?.cause || 'ended'));
@@ -507,21 +532,19 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
   }
 
   private attachPeerConnection(pc: RTCPeerConnection) {
+    if ((pc as any).__hipcallAttached) return;
+    (pc as any).__hipcallAttached = true;
+
     pc.addEventListener('track', (ev: RTCTrackEvent) => {
-      this.stopSounds();
       this.log('info', `Uzak ses akışı bağlandı (track: ${ev.track.kind}, id: ${ev.track.id})`);
-      const stream = ev.streams[0] ?? new MediaStream([ev.track]);
-      this.audioEl.srcObject = stream;
-      this.audioEl.muted = false;
-      this.audioEl.volume = 1.0;
-      this.audioEl.play().then(() => {
-        this.log('info', 'Uzak ses hoparlöre verildi (oynatılıyor).');
-      }).catch((err) => {
-        this.log('error', 'Ses oynatılamadı (autoplay engeli?): ' + err);
-      });
+      const stream = ev.streams?.[0] ?? new MediaStream([ev.track]);
+      this.playRemoteStream(stream);
     });
     pc.addEventListener('iceconnectionstatechange', () => {
       this.log('info', `WebRTC ICE Durumu: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        this.ensureRemoteAudio(pc);
+      }
     });
     pc.addEventListener('connectionstatechange', () => {
       this.log('info', `WebRTC Bağlantı Durumu: ${pc.connectionState}`);
@@ -529,6 +552,47 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
     // Yerel stream'i kapatabilmek için sender'lardan topla
     pc.addEventListener('negotiationneeded', () => this.captureLocal(pc));
     setTimeout(() => this.captureLocal(pc), 500);
+  }
+
+  private ensureRemoteAudio(pc: RTCPeerConnection) {
+    const receivers = pc.getReceivers ? pc.getReceivers() : [];
+    const audioTracks = receivers
+      .map((r) => r.track)
+      .filter((t): t is MediaStreamTrack => !!t && t.kind === 'audio');
+    if (audioTracks.length > 0) {
+      audioTracks.forEach((t) => {
+        t.enabled = true;
+      });
+      const current = this.audioEl.srcObject as MediaStream | null;
+      const currentIds = current ? current.getAudioTracks().map((t) => t.id).join(',') : '';
+      const newIds = audioTracks.map((t) => t.id).join(',');
+      if (!current || currentIds !== newIds) {
+        this.playRemoteStream(new MediaStream(audioTracks));
+      } else if (this.audioEl.paused) {
+        this.audioEl.muted = false;
+        this.audioEl.volume = 1.0;
+        this.audioEl.play().catch((err) => {
+          this.log('error', 'Ses devam ettirilemedi: ' + err);
+        });
+      }
+    }
+  }
+
+  private playRemoteStream(stream: MediaStream) {
+    stream.getAudioTracks().forEach((t) => {
+      t.enabled = true;
+    });
+    this.audioEl.srcObject = stream;
+    this.audioEl.muted = false;
+    this.audioEl.volume = 1.0;
+    this.audioEl
+      .play()
+      .then(() => {
+        this.log('info', 'Uzak ses hoparlöre verildi (oynatılıyor).');
+      })
+      .catch((err) => {
+        this.log('error', 'Ses oynatılamadı (autoplay engeli?): ' + err);
+      });
   }
 
   private captureLocal(pc: RTCPeerConnection) {
@@ -602,22 +666,30 @@ export function cleanAudioSDP(sdp: string): string {
   const lines = sdp.split(/\r?\n/);
   const filteredLines: string[] = [];
 
-  // Gerçek fiziksel LAN IP'sini (192.168.x.x) veya STUN Public IP (srflx) adayını bul
-  let realIp: string | undefined;
+  const isVirtualIp = (ip: string) =>
+    ip.startsWith('10.') ||
+    ip.startsWith('127.') ||
+    ip.startsWith('169.254.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip);
+
+  // 1) Önce STUN Public IP (srflx) adayını, yoksa gerçek fiziksel LAN IP'sini (192.168.x.x) bul
+  let srflxIp: string | undefined;
+  let lanIp: string | undefined;
   for (const line of lines) {
     if (line.startsWith('a=candidate:')) {
       const parts = line.split(' ');
       const ip = parts[4];
       const typ = parts[7];
-      if (typ === 'srflx') {
-        realIp = ip;
+      if (typ === 'srflx' && ip) {
+        srflxIp = ip;
         break;
       }
-      if (!realIp && ip && (ip.startsWith('192.168.') || ip.startsWith('172.16.') || (!ip.startsWith('10.') && !ip.startsWith('127.')))) {
-        realIp = ip;
+      if (!lanIp && ip && !isVirtualIp(ip)) {
+        lanIp = ip;
       }
     }
   }
+  const bestIp = srflxIp || lanIp;
 
   for (let line of lines) {
     // GSM operatörlerinin (VoLTE/ViLTE) görüntülü görüşme sanmasına yol açan video eklentilerini kaldır
@@ -625,12 +697,18 @@ export function cleanAudioSDP(sdp: string): string {
     if (line.includes('transport-wide-cc')) continue;
     if (line.includes('transport-cc')) continue;
 
-    // Sanal adaptör (Hyper-V / WSL: 10.1.x.x) yerine gerçek ağ adaptörünün IP'sini koy
-    if (line.startsWith('c=IN IP4 ') && realIp) {
-      const curIp = line.split(' ')[2];
-      if (curIp && curIp.startsWith('10.')) {
-        line = `c=IN IP4 ${realIp}`;
+    // Sanal adaptör (WSL / Hyper-V / Docker: 10.x.x.x veya 172.16-31.x.x) candidate satırlarını çıkar
+    if (line.startsWith('a=candidate:') && bestIp) {
+      const parts = line.split(' ');
+      const candIp = parts[4];
+      if (candIp && isVirtualIp(candIp)) {
+        continue;
       }
+    }
+
+    // c=IN IP4 satırına her zaman STUN Public IP (veya gerçek LAN IP) yaz ki santral RTP sesini doğru adrese göndersin
+    if (line.startsWith('c=IN IP4 ') && bestIp) {
+      line = `c=IN IP4 ${bestIp}`;
     }
 
     // m=audio satırında PSTN/GSM standardı olan PCMA (8) ve PCMU (0)'yu öne al
