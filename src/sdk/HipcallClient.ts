@@ -1,6 +1,6 @@
 import JsSIP from 'jssip';
 import { TypedEmitter } from './EventEmitter';
-import { DEFAULT_CONFIG } from './config';
+import { resolveConfig } from './config';
 import { OAuthModule, extractUserIdFromToken } from './OAuth';
 import { SoundEffects } from './SoundEffects';
 import type { AudioDeviceInfo, CallInfo, HipcallConfig, HipcallEvents, SipCredentials, TokenSet } from './types';
@@ -28,7 +28,7 @@ export class HipcallClient extends TypedEmitter<HipcallEvents> {
 
   constructor(config: Partial<HipcallConfig> = {}) {
     super();
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = resolveConfig(config);
     this.oauth = new OAuthModule(this.config);
     this.audioEl = this.config.audioElement ?? this.createAudioElement();
     this.sounds = new SoundEffects();

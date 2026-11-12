@@ -3,10 +3,14 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 /**
  * OAuth2 PKCE token exchange CORS proxy.
  * Tarayıcı -> POST /hipcall-oauth/token (client_id + code + code_verifier, client_secret YOK)
- * Dev server -> CORS engeline takılmaması için doğrudan https://use.hipcall.com.tr/oauth/token adresine iletir
+ * Dev server -> CORS engeline takılmaması için isteği Hipcall token adresine iletir (VITE_HIPCALL_REGION: global = use.hipcall.com, tr = use.hipcall.com.tr)
  */
+function hipcallOrigin(env: Record<string, string>): string {
+  return env.VITE_HIPCALL_REGION === 'tr' ? 'https://use.hipcall.com.tr' : 'https://use.hipcall.com';
+}
+
 function hipcallOAuthProxy(env: Record<string, string>): Plugin {
-  const tokenUrl = env.VITE_HIPCALL_TOKEN_URL || 'https://use.hipcall.com.tr/oauth/token';
+  const tokenUrl = env.VITE_HIPCALL_TOKEN_URL || `${hipcallOrigin(env)}/oauth/token`;
   return {
     name: 'hipcall-oauth-proxy',
     configureServer(server) {
@@ -51,7 +55,7 @@ function hipcallOAuthProxy(env: Record<string, string>): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiTarget = new URL(env.VITE_HIPCALL_API_BASE_URL || 'https://use.hipcall.com.tr/api/v3');
+  const apiTarget = new URL(env.VITE_HIPCALL_API_BASE_URL || `${hipcallOrigin(env)}/api/v3`);
   return {
     plugins: [hipcallOAuthProxy(env)],
     server: {
@@ -60,7 +64,7 @@ export default defineConfig(({ mode }) => {
       // ngrok host'una izin ver
       allowedHosts: [env.NGROK_HOST || 'envelope-footrest-flyable.ngrok-free.dev', '.ngrok-free.dev', '.ngrok.app'],
       proxy: {
-        // API CORS sorunu için: /hipcall-api/* -> https://use.hipcall.com.tr/api/v3/*
+        // API CORS sorunu için: /hipcall-api/* -> <Hipcall API>/api/v3/*
         '/hipcall-api': {
           target: apiTarget.origin,
           changeOrigin: true,

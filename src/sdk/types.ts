@@ -1,4 +1,12 @@
+/** Hipcall sunucu bölgesi: global = use.hipcall.com, tr = use.hipcall.com.tr */
+export type HipcallRegion = 'global' | 'tr';
+
 export interface HipcallConfig {
+  /**
+   * Hangi Hipcall sunucularının kullanılacağı (varsayılan: 'global').
+   * Adres alanlarını (authorizeUrl, tokenUrl, apiBaseUrl, sipRealm, wsUrl) ayrıca verirseniz onlar geçerli olur.
+   */
+  region?: HipcallRegion;
   authorizeUrl: string;
   /** Token endpoint. Tarayıcıdan CORS sorunu olursa proxy yolu (örn. /hipcall-oauth/token) verin. */
   tokenUrl: string;
@@ -7,7 +15,7 @@ export interface HipcallConfig {
   sipTokenEndpoint: string;
   /** Dinamik kullanıcı ID'si (örn. 4200) */
   userId?: number | string;
-  /** Varsayılan SIP Realm/Domain (örn. sip.hipcall.com.tr) */
+  /** Varsayılan SIP Realm/Domain (global: sip.hipcall.com, tr: sip.hipcall.com.tr) */
   sipRealm?: string;
   /** Eski/alternatif yollar (fallback için) */
   sipCredentialsPaths?: string[];

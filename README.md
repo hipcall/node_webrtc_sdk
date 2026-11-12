@@ -22,10 +22,7 @@ pnpm add @hipcall/webrtc-sdk
 import { HipcallClient } from '@hipcall/webrtc-sdk';
 
 const client = new HipcallClient({
-  authorizeUrl: 'https://use.hipcall.com/oauth/authorize',
-  tokenUrl: 'https://use.hipcall.com/oauth/token',
-  apiBaseUrl: 'https://use.hipcall.com/api/v3',
-  wsUrl: 'wss://mgw.hipcall.com:8443',
+  region: 'global', // 'global' = use.hipcall.com, 'tr' = use.hipcall.com.tr
   clientId: 'YOUR_OAUTH_CLIENT_ID',
   redirectUri: 'https://app.example.com/callback',
   usePKCE: true,
@@ -48,14 +45,17 @@ client.on('callEnded', () => {
   console.log('Call ended');
 });
 
-client.on('error', ({ code, message }) => {
-  console.error(`[${code}] ${message}`);
+client.on('registrationFailed', ({ cause, code }) => {
+  console.error('Registration failed:', cause, code);
+});
+
+client.on('callFailed', ({ cause }) => {
+  console.error('Call failed:', cause);
 });
 
 // 2. Authenticate with OAuth 2.0 (PKCE) and connect
-if (!client.isAuthenticated()) {
-  const loginUrl = await client.getLoginUrlAsync();
-  window.location.href = loginUrl;
+if (!client.isAuthenticated) {
+  await client.loginWithOAuth(); // redirects to the Hipcall sign-in page
 } else {
   await client.connectSIP();
 }
@@ -70,16 +70,28 @@ const params = new URLSearchParams(window.location.search);
 const code = params.get('code');
 
 if (code) {
-  await client.handleOAuthCallback(code);
+  window.history.replaceState({}, document.title, '/'); // codes are single-use
+  await client.handleOAuthCallback(code, params.get('state'));
   await client.connectSIP();
 }
 ```
 
+## Regions
+
+Hipcall runs two sets of servers. Pick yours with the `region` option:
+
+| `region` | API and sign-in | SIP realm | WebSocket |
+| :--- | :--- | :--- | :--- |
+| `'global'` (default) | `https://use.hipcall.com` | `sip.hipcall.com` | `wss://mgw.hipcall.com:8443` |
+| `'tr'` | `https://use.hipcall.com.tr` | `sip.hipcall.com.tr` | `wss://mgw.hipcall.com.tr:8443` |
+
+Any address you pass yourself (`authorizeUrl`, `tokenUrl`, `apiBaseUrl`, `sipRealm`, `wsUrl`) overrides the region default. When `POST /api/v3/sip/token` returns a `wss_url`, the SDK connects to that address.
+
 ## Authentication and SIP Token Flow
 
-1. **OAuth 2.0 with PKCE (RFC 7636):** Calling `getLoginUrlAsync()` generates a cryptographic `code_verifier` and SHA-256 `code_challenge` (`S256`) in the browser using the Web Crypto API. During `handleOAuthCallback(code)`, the `code_verifier` is sent to the token endpoint so browser applications never store a `client_secret`.
-2. **Dynamic SIP Credentials (`POST /api/v3/sip/token`):** Calling `connectSIP()` requests temporary SIP credentials (`username`, `password`, `domain`, and `wss_url`) from the Hipcall API. If a `user_id` is not provided, the SDK automatically resolves the authenticated user's ID from `GET /api/v3/profile`.
-3. **SIP over WebSocket (`REGISTER`):** The SDK initializes a JsSIP User Agent over `wss://`, completes digest authentication, and refreshes registration every 300 seconds.
+1. **OAuth 2.0 with PKCE (RFC 7636):** Calling `loginWithOAuth()` generates a cryptographic `code_verifier` and SHA-256 `code_challenge` (`S256`) in the browser using the Web Crypto API. During `handleOAuthCallback(code, state)`, the `code_verifier` is sent to the token endpoint so browser applications never store a `client_secret`.
+2. **Dynamic SIP Credentials (`POST /api/v3/sip/token`):** Calling `connectSIP()` requests temporary SIP credentials (`sip_username`, `sip_realm`, `sip_token` and `wss_url`) from the Hipcall API. Without a `user_id`, the API returns the signed-in user's own credentials.
+3. **SIP over WebSocket (`REGISTER`):** The SDK initializes a JsSIP User Agent over `wss://`, authenticates, and renews the registration before it expires (default `registerExpires`: 300 seconds).
 
 ### Manual SIP Credentials (Optional)
 
@@ -88,7 +100,7 @@ If your backend fetches SIP credentials on the server side, you can pass them di
 ```ts
 client.setManualCredentials({
   username: '1001',
-  realm: 'account.sip.hipcall.com',
+  realm: 'sip.hipcall.com',
   sipToken: 'YOUR_SIP_PASSWORD_OR_JWT',
   wsServers: ['wss://mgw.hipcall.com:8443'],
 });
@@ -116,7 +128,7 @@ const isOnHold = await client.toggleHold();
 client.sendDTMF('1');
 
 // List and switch audio output devices (speakers / headsets)
-const speakers = await client.getAudioOutputDevices();
+const speakers = (await client.getAudioDevices()).filter((d) => d.kind === 'audiooutput');
 if (speakers.length > 0) {
   await client.setAudioOutputDevice(speakers[0].deviceId);
 }
@@ -126,18 +138,21 @@ if (speakers.length > 0) {
 
 | Event | Payload | Description |
 | :--- | :--- | :--- |
-| `stateChanged` | `ConnectionState` | Fired when the connection state changes (`disconnected`, `connecting`, `connected`, `registered`, `error`). |
-| `registered` | `void` | Fired when `SIP 200 OK` is received for `REGISTER`. |
+| `authenticated` | `TokenSet` | Fired when the OAuth2 token exchange completes. |
+| `connecting` | `void` | Fired when the WebSocket connection starts. |
+| `registered` | `void` | Fired when `REGISTER` receives `200 OK`. |
 | `unregistered` | `void` | Fired when the SIP registration ends. |
-| `registrationFailed` | `{ cause: string }` | Fired when SIP registration is rejected. |
+| `registrationFailed` | `{ cause: string; code?: number }` | Fired when SIP registration is rejected. |
+| `disconnected` | `{ error?: boolean; reason?: string }` | Fired when the WebSocket connection closes. |
 | `incomingCall` | `CallInfo` | Fired when an inbound call arrives. |
-| `callProgress` | `CallInfo` | Fired when an outbound call is ringing (`180 Ringing` / `183 Session Progress`). |
-| `callConnected` | `CallInfo` | Fired when media negotiation completes and audio starts flowing. |
-| `callEnded` | `CallInfo \| null` | Fired when the call is terminated or rejected. |
-| `callHoldChanged` | `{ isHeld: boolean }` | Fired when the call hold state changes. |
-| `callMuteChanged` | `{ isMuted: boolean }` | Fired when the microphone mute state changes. |
-| `sipLog` | `{ direction, message, timestamp }` | Raw SIP signaling and diagnostic log events. |
-| `error` | `{ code, message, originalError? }` | Fired on OAuth, API, WebRTC, or SIP errors. |
+| `callConnecting` | `CallInfo` | Fired when an outbound call starts. |
+| `callRinging` | `CallInfo` | Fired when the other side is ringing (`180` / `183`). |
+| `callConnected` | `CallInfo` | Fired when the call is answered and audio is set up. |
+| `callFailed` | `{ call: CallInfo; cause: string }` | Fired when the call drops before connecting or is rejected. |
+| `callEnded` | `{ call: CallInfo; cause: string }` | Fired when the call ends (also after `callFailed`). |
+| `muteChanged` | `{ muted: boolean }` | Fired when the microphone mute state changes. |
+| `holdChanged` | `{ held: boolean }` | Fired when the hold state changes. |
+| `sipLog` | `{ direction, message, time }` | Raw SIP messages and SDK log lines. |
 
 ## Project Modules
 

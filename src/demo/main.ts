@@ -6,6 +6,7 @@ const isDev = import.meta.env.DEV;
 
 // Dev'de CORS'u aşmak için Vite proxy yolları; prod'da gerçek endpoint'ler.
 const client = new HipcallClient({
+  region: env.VITE_HIPCALL_REGION === 'tr' ? 'tr' : 'global',
   authorizeUrl: env.VITE_HIPCALL_AUTHORIZE_URL,
   tokenUrl: isDev ? '/hipcall-oauth/token' : env.VITE_HIPCALL_TOKEN_URL,
   apiBaseUrl: isDev ? '/hipcall-api' : env.VITE_HIPCALL_API_BASE_URL,
@@ -38,7 +39,7 @@ app.innerHTML = `
       <div id="tabManual" class="pane" hidden>
         <label>Access Token (opsiyonel)<input id="mAccess" placeholder="OAuth access token" /></label>
         <label>SIP Kullanıcı / Dahili<input id="mUser" placeholder="1001" /></label>
-        <label>SIP Realm / Domain<input id="mRealm" placeholder="firma.sip.hipcall.com.tr" /></label>
+        <label>SIP Realm / Domain<input id="mRealm" placeholder="sip.hipcall.com / sip.hipcall.com.tr" /></label>
         <label>SIP JWT Token / Parola<input id="mToken" placeholder="eyJhbGciOi..." /></label>
         <label>WSS Adresi<input id="mWs" value="${env.VITE_HIPCALL_WS_URL}" /></label>
         <label>Kimlik doğrulama modu

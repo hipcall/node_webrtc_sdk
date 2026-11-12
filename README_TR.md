@@ -22,10 +22,7 @@ pnpm add @hipcall/webrtc-sdk
 import { HipcallClient } from '@hipcall/webrtc-sdk';
 
 const client = new HipcallClient({
-  authorizeUrl: 'https://use.hipcall.com.tr/oauth/authorize',
-  tokenUrl: 'https://use.hipcall.com.tr/oauth/token',
-  apiBaseUrl: 'https://use.hipcall.com.tr/api/v3',
-  wsUrl: 'wss://mgw.hipcall.com.tr:8443',
+  region: 'tr', // 'tr' = use.hipcall.com.tr, 'global' = use.hipcall.com
   clientId: 'YOUR_OAUTH_CLIENT_ID',
   redirectUri: 'https://app.ornek.com/callback',
   usePKCE: true,
@@ -48,14 +45,17 @@ client.on('callEnded', () => {
   console.log('Çağrı sonlandı');
 });
 
-client.on('error', ({ code, message }) => {
-  console.error(`[${code}] ${message}`);
+client.on('registrationFailed', ({ cause, code }) => {
+  console.error('Kayıt başarısız:', cause, code);
+});
+
+client.on('callFailed', ({ cause }) => {
+  console.error('Çağrı başarısız:', cause);
 });
 
 // 2. OAuth 2.0 (PKCE) ile kimlik doğrulayın ve bağlanın
-if (!client.isAuthenticated()) {
-  const loginUrl = await client.getLoginUrlAsync();
-  window.location.href = loginUrl;
+if (!client.isAuthenticated) {
+  await client.loginWithOAuth(); // Hipcall giriş sayfasına yönlendirir
 } else {
   await client.connectSIP();
 }
@@ -70,16 +70,28 @@ const params = new URLSearchParams(window.location.search);
 const code = params.get('code');
 
 if (code) {
-  await client.handleOAuthCallback(code);
+  window.history.replaceState({}, document.title, '/'); // kod tek kullanımlık
+  await client.handleOAuthCallback(code, params.get('state'));
   await client.connectSIP();
 }
 ```
 
+## Bölgeler
+
+Hipcall'un iki ayrı sunucu grubu var. Hangisini kullanacağınızı `region` ayarıyla seçin:
+
+| `region` | API ve giriş | SIP realm | WebSocket |
+| :--- | :--- | :--- | :--- |
+| `'global'` (varsayılan) | `https://use.hipcall.com` | `sip.hipcall.com` | `wss://mgw.hipcall.com:8443` |
+| `'tr'` | `https://use.hipcall.com.tr` | `sip.hipcall.com.tr` | `wss://mgw.hipcall.com.tr:8443` |
+
+Varsayılan bölge `global` olduğu için Türkiye hesaplarında `region: 'tr'` vermeyi unutmayın. Adres alanlarını (`authorizeUrl`, `tokenUrl`, `apiBaseUrl`, `sipRealm`, `wsUrl`) kendiniz verirseniz bölge varsayılanının yerine onlar kullanılır. `POST /api/v3/sip/token` cevabında `wss_url` gelirse SDK o adrese bağlanır.
+
 ## Kimlik Doğrulama ve SIP Token Akışı
 
-1. **OAuth 2.0 PKCE (RFC 7636):** `getLoginUrlAsync()` çağrıldığında SDK, tarayıcının Web Crypto API'sini kullanarak kriptografik bir `code_verifier` ve SHA-256 tabanlı `code_challenge` (`S256`) üretir. `handleOAuthCallback(code)` aşamasında bu `code_verifier` doğrulanmak üzere token uç noktasına gönderilir; böylece tarayıcıda `client_secret` saklanmaz.
-2. **Dinamik SIP Bilgileri (`POST /api/v3/sip/token`):** `connectSIP()` çağrıldığında Hipcall API üzerinden geçici SIP bilgileri (`username`, `password`, `domain` ve `wss_url`) alınır. Bir `user_id` belirtilmemişse, SDK otomatik olarak `GET /api/v3/profile` uç noktasından oturum açmış kullanıcının kendi ID bilgisini tespit eder.
-3. **WebSocket Üzerinden SIP Kaydı (`REGISTER`):** SDK, `wss://` adresi üzerinden JsSIP User Agent oturumunu başlatır, digest kimlik doğrulamasını tamamlar ve her 300 saniyede bir SIP kaydını yeniler.
+1. **OAuth 2.0 PKCE (RFC 7636):** `loginWithOAuth()` çağrıldığında SDK, tarayıcının Web Crypto API'sini kullanarak kriptografik bir `code_verifier` ve SHA-256 tabanlı `code_challenge` (`S256`) üretir. `handleOAuthCallback(code, state)` aşamasında bu `code_verifier` doğrulanmak üzere token uç noktasına gönderilir; böylece tarayıcıda `client_secret` saklanmaz.
+2. **Dinamik SIP Bilgileri (`POST /api/v3/sip/token`):** `connectSIP()` çağrıldığında Hipcall API üzerinden geçici SIP bilgileri (`sip_username`, `sip_realm`, `sip_token` ve `wss_url`) alınır. Bir `user_id` belirtilmemişse oturum açmış kullanıcının kendi SIP bilgileri döner.
+3. **WebSocket Üzerinden SIP Kaydı (`REGISTER`):** SDK, `wss://` adresi üzerinden JsSIP User Agent oturumunu başlatır, kimlik doğrulamasını tamamlar ve SIP kaydını süresi dolmadan yeniler (varsayılan `registerExpires`: 300 sn).
 
 ### Manuel SIP Bilgileri ile Bağlantı (İsteğe Bağlı)
 
@@ -88,7 +100,7 @@ SIP kimlik bilgilerini kendi arka uç (backend) sunucunuzda çekiyorsanız, tara
 ```ts
 client.setManualCredentials({
   username: '1001',
-  realm: 'hesap.sip.hipcall.com.tr',
+  realm: 'sip.hipcall.com.tr',
   sipToken: 'SIP_SIFRESI_VEYA_JWT',
   wsServers: ['wss://mgw.hipcall.com.tr:8443'],
 });
@@ -116,7 +128,7 @@ const isOnHold = await client.toggleHold();
 client.sendDTMF('1');
 
 // Ses çıkış cihazlarını (hoparlör / kulaklık) listele ve değiştir
-const speakers = await client.getAudioOutputDevices();
+const speakers = (await client.getAudioDevices()).filter((d) => d.kind === 'audiooutput');
 if (speakers.length > 0) {
   await client.setAudioOutputDevice(speakers[0].deviceId);
 }
@@ -126,18 +138,21 @@ if (speakers.length > 0) {
 
 | Olay (Event) | Veri Tipi (Payload) | Açıklama |
 | :--- | :--- | :--- |
-| `stateChanged` | `ConnectionState` | Bağlantı durumu değiştiğinde tetiklenir (`disconnected`, `connecting`, `connected`, `registered`, `error`). |
-| `registered` | `void` | `REGISTER` isteğine `SIP 200 OK` yanıtı alındığında tetiklenir. |
+| `authenticated` | `TokenSet` | OAuth2 token takası tamamlandığında tetiklenir. |
+| `connecting` | `void` | WebSocket bağlantısı başlatıldığında tetiklenir. |
+| `registered` | `void` | `REGISTER` isteğine `200 OK` alındığında tetiklenir. |
 | `unregistered` | `void` | SIP kaydı sonlandığında tetiklenir. |
-| `registrationFailed` | `{ cause: string }` | SIP kaydı reddedildiğinde tetiklenir. |
-| `incomingCall` | `CallInfo` | Yeni bir gelen çağrı ulaştığında tetiklenir. |
-| `callProgress` | `CallInfo` | Giden çağrı karşı tarafta çaldığında (`180 Ringing` / `183 Session Progress`) tetiklenir. |
-| `callConnected` | `CallInfo` | Medya anlaşması tamamlanıp ses akışı başladığında tetiklenir. |
-| `callEnded` | `CallInfo \| null` | Çağrı sonlandırıldığında veya reddedildiğinde tetiklenir. |
-| `callHoldChanged` | `{ isHeld: boolean }` | Çağrı bekletme (Hold) durumu değiştiğinde tetiklenir. |
-| `callMuteChanged` | `{ isMuted: boolean }` | Mikrofon susturma (Mute) durumu değiştiğinde tetiklenir. |
-| `sipLog` | `{ direction, message, timestamp }` | Ham SIP sinyalleşme ve tanılama logları. |
-| `error` | `{ code, message, originalError? }` | OAuth, API, WebRTC veya SIP hatalarında tetiklenir. |
+| `registrationFailed` | `{ cause: string; code?: number }` | SIP kaydı reddedildiğinde tetiklenir. |
+| `disconnected` | `{ error?: boolean; reason?: string }` | WebSocket bağlantısı kapandığında tetiklenir. |
+| `incomingCall` | `CallInfo` | Gelen çağrı ulaştığında tetiklenir. |
+| `callConnecting` | `CallInfo` | Giden arama başlatıldığında tetiklenir. |
+| `callRinging` | `CallInfo` | Karşı taraf çaldığında (`180` / `183`) tetiklenir. |
+| `callConnected` | `CallInfo` | Görüşme başlayıp ses akışı kurulduğunda tetiklenir. |
+| `callFailed` | `{ call: CallInfo; cause: string }` | Çağrı bağlanmadan düştüğünde veya reddedildiğinde tetiklenir. |
+| `callEnded` | `{ call: CallInfo; cause: string }` | Çağrı bittiğinde tetiklenir (`callFailed` sonrasında da). |
+| `muteChanged` | `{ muted: boolean }` | Mikrofon susturma durumu değiştiğinde tetiklenir. |
+| `holdChanged` | `{ held: boolean }` | Bekletme durumu değiştiğinde tetiklenir. |
+| `sipLog` | `{ direction, message, time }` | Ham SIP mesajları ve SDK logları. |
 
 ## Proje Modülleri
 

@@ -235,7 +235,7 @@ export class OAuthModule {
 
     return normalizeCredentials(json, this.cfg.wsUrl, {
       fallbackUsername: parsedUserId !== undefined ? String(parsedUserId) : undefined,
-      fallbackRealm: this.cfg.sipRealm || 'sip.hipcall.com.tr',
+      fallbackRealm: this.cfg.sipRealm,
     });
   }
 
@@ -263,6 +263,7 @@ export class OAuthModule {
             const myRealId =
               profile?.id ??
               profile?.data?.id ??
+          profile?.data?.user?.id ??
               profile?.user?.id ??
               profile?.user_id;
 
@@ -283,6 +284,7 @@ export class OAuthModule {
         const myRealId =
           profile?.id ??
           profile?.data?.id ??
+          profile?.data?.user?.id ??
           profile?.user?.id ??
           profile?.user_id;
         if (myRealId) {
@@ -374,14 +376,18 @@ export function normalizeCredentials(
     fallbacks?.fallbackUsername;
   const realm =
     pick(o, ['realm', 'domain', 'sip_domain', 'sip_realm', 'host', 'sip_server', 'server']) ||
-    fallbacks?.fallbackRealm ||
-    'sip.hipcall.com.tr';
+    fallbacks?.fallbackRealm;
   const sipToken = pick(o, ['token', 'sip_token', 'jwt', 'password', 'sip_password', 'access_token']);
   const ws = pick(o, ['wss_url', 'ws_url', 'websocket_url', 'ws_server', 'wss', 'websocket']);
 
   if (!sipToken) {
     throw new Error(
       `SIP yanıtında token bulunamadı. Yanıt: ${JSON.stringify(json).slice(0, 300)}`,
+    );
+  }
+  if (!realm) {
+    throw new Error(
+      `SIP realm bulunamadı. Yanıt: ${JSON.stringify(json).slice(0, 300)}`,
     );
   }
   if (!username) {
