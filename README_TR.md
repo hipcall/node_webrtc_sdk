@@ -2,7 +2,7 @@
 
 > **Dil / Language:** [English (`README.md`)](./README.md) | **Türkçe**
 
-Hipcall Bulut Santral platformu için geliştirilmiş resmi WebRTC ve SIP JavaScript/TypeScript SDK kütüphanesi.
+[Hipcall](https://www.hipcall.com.tr) Bulut Santral platformu için geliştirilmiş resmi WebRTC ve SIP JavaScript/TypeScript SDK kütüphanesi.
 
 `@hipcall/webrtc-sdk` paketini kullanarak CRM, yardım masası (helpdesk) veya web uygulamalarınıza doğrudan tarayıcı üzerinden sesli arama, gelen çağrı bildirimi, mikrofon susturma (mute), çağrı bekletme (hold), DTMF tuşlama ve ses çıkış cihazı seçimi özelliklerini entegre edebilirsiniz.
 
@@ -201,6 +201,15 @@ Derleme çıktıları `dist/sdk/` dizininde oluşturulur:
 - `dist/sdk/hipcall-webrtc-sdk.umd.js` (UMD / CommonJS çıktısı)
 - `dist/sdk/types/index.d.ts` (TypeScript tip tanımlamaları)
 
+## Dokümantasyon ve Kaynaklar
+
+- [Hipcall Geliştirici Portalı](https://developers.hipcall.com.tr/) — Resmi rehberler, API referansları ve entegrasyon dokümantasyonu.
+- [Hipcall](https://www.hipcall.com.tr) — Bulut santral, çağrı merkezi ve CRM platformu.
+
 ## Lisans
 
 [MIT](./LICENSE)
+
+---
+
+Developed by [Hipcall](https://www.hipcall.com.tr)

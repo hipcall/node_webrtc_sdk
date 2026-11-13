@@ -2,7 +2,7 @@
 
 > **Language / Dil:** **English** | [Türkçe (`README_TR.md`)](./README_TR.md)
 
-Official WebRTC and SIP JavaScript/TypeScript SDK for the Hipcall Cloud PBX platform.
+Official WebRTC and SIP JavaScript/TypeScript SDK for the [Hipcall](https://www.hipcall.com) Cloud PBX platform.
 
 Use `@hipcall/webrtc-sdk` to embed voice calling, incoming call alerts, hold/mute controls, DTMF keypad input, and audio device selection directly into your CRM, helpdesk, or web application.
 
@@ -201,6 +201,15 @@ Build outputs in `dist/sdk/`:
 - `dist/sdk/hipcall-webrtc-sdk.umd.js` (UMD / CommonJS bundle)
 - `dist/sdk/types/index.d.ts` (TypeScript type declarations)
 
+## Documentation & Resources
+
+- [Hipcall Developer Portal](https://developers.hipcall.com/) — Official guides, API references, and tutorials.
+- [Hipcall](https://www.hipcall.com) — Cloud phone system, contact centre, and CRM platform.
+
 ## License
 
 [MIT](./LICENSE)
+
+---
+
+Developed by [Hipcall](https://www.hipcall.com)
