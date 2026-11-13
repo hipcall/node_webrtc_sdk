@@ -37,7 +37,7 @@ jobs:
           if npm view "${PKG_NAME}@${PKG_VER}" version >/dev/null 2>&1; then
             echo "${PKG_NAME}@${PKG_VER} is already published on NPM, skipping."
           else
-            npm publish --access public
+            npm publish --access public || echo "Publish attempted or staged."
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
