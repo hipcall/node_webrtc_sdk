@@ -212,4 +212,4 @@ Build outputs in `dist/sdk/`:
 
 ---
 
-Developed by [Hipcall](https://www.hipcall.com)
+Developed by [Hipcall](https://www.hipcall.com) • [Hipcall Developer Portal](https://developers.hipcall.com/)

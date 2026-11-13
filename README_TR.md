@@ -212,4 +212,4 @@ Derleme çıktıları `dist/sdk/` dizininde oluşturulur:
 
 ---
 
-Developed by [Hipcall](https://www.hipcall.com.tr)
+Developed by [Hipcall](https://www.hipcall.com.tr) • [Hipcall Geliştirici Portalı](https://developers.hipcall.com.tr/)
